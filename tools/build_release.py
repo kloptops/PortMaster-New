@@ -24,33 +24,34 @@ from util import *
 
 #############################################################################
 ## Constants
-README_FILE, SCREENSHOT_FILE, COVER_FILE, SPEC_FILE, PORT_JSON, PORT_SCRIPT, PORT_DIR, GITIGNORE_FILE, UNKNOWN_FILE = range(9)
+README_FILE, SCREENSHOT_FILE, COVER_FILE, GAMEINFO_XML, PORT_JSON, PORT_SCRIPT, PORT_DIR, GITIGNORE_FILE, UNKNOWN_FILE = range(9)
 REQUIRED_FILES = (
     (1<<README_FILE)     |
     (1<<SCREENSHOT_FILE) |
+    # (1<<GAMEINFO_XML)    |   ## Not yet required for every port.
     (1<<PORT_JSON)       |
     (1<<PORT_SCRIPT)     |
     (1<<PORT_DIR)        )
 
 FILE_TYPE_DESC = {
-    README_FILE: "README.md",
+    README_FILE:     "README.md",
     SCREENSHOT_FILE: "screenshot.{png|jpg}",
-    COVER_FILE:  "cover.{png|jpg}",
-    SPEC_FILE:   "port.spec",
-    PORT_JSON:   "port.json",
-    PORT_SCRIPT: "Port Script",
-    PORT_DIR:    "Port Directory",
-    GITIGNORE_FILE: ".gitginore",
-    UNKNOWN_FILE: "Unknown file",
+    COVER_FILE:      "cover.{png|jpg}",
+    GAMEINFO_XML:    "gameinfo.xml",
+    PORT_JSON:       "port.json",
+    PORT_SCRIPT:     "Port Script",
+    PORT_DIR:        "Port Directory",
+    GITIGNORE_FILE:  ".gitginore",
+    UNKNOWN_FILE:    "Unknown file",
     }
 
 FILE_TYPE_RE = {
     r"^\.gitignore$": GITIGNORE_FILE,
     r"^readme\.md$": README_FILE,
     r"^screenshot\.(png|jpg)$": SCREENSHOT_FILE,
-    r"^cover\.(png|jpg)$": COVER_FILE,
+    r"^cover\.(?:[a-z0-9]+\.)?(png|jpg)$": COVER_FILE,
     r"^port\.json$": PORT_JSON,
-    # r"^port\.spec$": SPEC_FILE,
+    r"^gameinfo\.xml$": GAMEINFO_XML,
     }
 
 TODAY = str(datetime.datetime.today().date())
@@ -381,15 +382,18 @@ def build_port_zip(root_dir, port_dir, port_data, new_manifest, port_status):
                 file_name_type = file_type(file_name)
 
                 if file_name_type in (SCREENSHOT_FILE, COVER_FILE):
-                    new_name = port_data['dirs'][0] + f"{port_name}.{new_name}"
+                    new_name = port_data['dirs'][0] + f"{new_name}"
 
                 elif file_name_type == README_FILE:
                     new_name = port_data['dirs'][0] + f"{port_name}.md"
 
                 elif file_name_type == PORT_JSON:
-                    new_name = port_data['dirs'][0] + f"{port_name}.port.json"
+                    new_name = port_data['dirs'][0] + "port.json"
 
-                elif file_name_type in (SPEC_FILE, UNKNOWN_FILE):
+                elif file_name_type == GAMEINFO_XML:
+                    new_name = port_data['dirs'][0] + "gameinfo.xml"
+
+                elif file_name_type == UNKNOWN_FILE:
                     continue
 
             else:
