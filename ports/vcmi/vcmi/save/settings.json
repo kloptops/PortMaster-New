@@ -9,6 +9,6 @@
 		"controllerAxisSpeed" : 500
 	},
 	"video" : {
-		"driver" : "opengles2"
+		"driver" : "opengl"
 	}
 }

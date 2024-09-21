@@ -12,10 +12,10 @@ index 6fa656a17..d9e46738f 100644
  /* System detection. */
  /* ---------------------------------------------------------------------------- */
 diff --git a/client/gui/CursorHandler.cpp b/client/gui/CursorHandler.cpp
-index 146f27b9c..696a8820f 100644
+index eaa8cfd98..d7c38cfe5 100644
 --- a/client/gui/CursorHandler.cpp
 +++ b/client/gui/CursorHandler.cpp
-@@ -23,7 +23,7 @@
+@@ -24,7 +24,7 @@
  
  std::unique_ptr<ICursor> CursorHandler::createCursor()
  {
@@ -25,10 +25,10 @@ index 146f27b9c..696a8820f 100644
  		return std::make_unique<CursorSoftware>();
  #endif
 diff --git a/lib/VCMIDirs.cpp b/lib/VCMIDirs.cpp
-index 1eaadefc2..340c13584 100644
+index 1eaadefc2..b9c813cd5 100644
 --- a/lib/VCMIDirs.cpp
 +++ b/lib/VCMIDirs.cpp
-@@ -579,6 +579,89 @@ void VCMIDirsAndroid::init()
+@@ -579,6 +579,94 @@ void VCMIDirsAndroid::init()
  	nativePath = envHelper.callStaticStringMethod(CAndroidVMHelper::NATIVE_METHODS_DEFAULT_CLASS, "nativePath");
  	IVCMIDirsUNIX::init();
  }
@@ -97,9 +97,14 @@ index 1eaadefc2..340c13584 100644
 +
 +bfs::path VCMIDirsPM::libraryPath() const
 +{
-+	const char * tempResult;
-+	if ((tempResult = getenv("PORTMASTER_HOME")))
-+		return bfs::path(tempResult) / "libs";
++	const char * homeResult;
++	const char * archResult;
++
++	if ((homeResult = getenv("PORTMASTER_HOME")))
++		if ((archResult = getenv("DEVICE_ARCH")))
++			return bfs::path(homeResult) / (std::string("libs.") + archResult);
++		else
++			return bfs::path(homeResult) / "libs";
 +	else
 +		return M_LIB_DIR;
 +}
@@ -118,7 +123,7 @@ index 1eaadefc2..340c13584 100644
  #elif defined(VCMI_XDG)
  class VCMIDirsXDG : public IVCMIDirsUNIX
  {
-@@ -700,6 +783,8 @@ namespace VCMIDirs
+@@ -700,6 +788,8 @@ namespace VCMIDirs
  			static VCMIDirsWIN32 singleton;
  		#elif defined(VCMI_ANDROID)
  			static VCMIDirsAndroid singleton;
@@ -140,3 +145,17 @@ index 5c351f623..6f60207ad 100644
  	};
  
  	for(const luaL_Reg & lib : STD_LIBS)
+diff --git a/server/processors/PlayerMessageProcessor.cpp b/server/processors/PlayerMessageProcessor.cpp
+index 5929bbd87..f58b3ee5b 100644
+--- a/server/processors/PlayerMessageProcessor.cpp
++++ b/server/processors/PlayerMessageProcessor.cpp
+@@ -657,7 +657,8 @@ void PlayerMessageProcessor::cheatMaxMorale(PlayerColor player, const CGHeroInst
+ bool PlayerMessageProcessor::handleCheatCode(const std::string & cheat, PlayerColor player, ObjectInstanceID currObj)
+ {
+ 	std::vector<std::string> words;
+-	boost::split(words, boost::trim_copy(cheat), boost::is_any_of("\t\r\n "));
++	std::string cheatTrimmed = boost::trim_copy(cheat);
++	boost::split(words, cheatTrimmed, boost::is_any_of("\t\r\n "));
+ 
+ 	if (words.empty() || !gameHandler->getStartInfo()->extraOptionsInfo.cheatsAllowed)
+ 		return false;

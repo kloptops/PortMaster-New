@@ -27,27 +27,23 @@ Some additional settings can be made in ./save/settings.json:
 
 ## Building
 
-```
+```sh
     git clone --recursive https://github.com/vcmi/vcmi.git
 ```
  
-	replace ./server/processors/PlayerMessageProcessor.cpp:653 with 
+	put current DATA_PATHS.diff inside ./vcmi folder
  
-```
-	std::string cheatTrimmed = boost::trim_copy(cheat);
-	boost::split(words, cheatTrimmed, boost::is_any_of("\t\r\n "));
-```
- 
-	put DATA_PATHS.diff inside ./vcmi folder
- 
-```
+```sh
+    ## Current build
+    git checkout c7fc6a4c2
+
+    ## Apply patch
     git apply DATA_PATHS.diff
 
     mkdir build
     cd build
 
-	cmake .. -DBIN_DIR:FILE="bin" -DCMAKE_INSTALL_PREFIX:FILE="." -DCOPY_CONFIG_ON_BUILD="ON" -DENABLE_DEBUG_CONSOLE="OFF" -DENABLE_EDITOR="OFF" -DENABLE_ERM="OFF" -DENABLE_GITVERSION="OFF" -DENABLE_LAUNCHER="OFF" -DENABLE_LUA="OFF" -DCMAKE_BUILD_TYPE="RelWithDebInfo" -DENABLE_MONOLITHIC_INSTALL="OFF" -DENABLE_MULTI_PROCESS_BUILDS="ON" -DENABLE_NULLKILLER_AI="ON" -DENABLE_PCH="OFF" -DENABLE_SINGLE_APP_BUILD="OFF" -DENABLE_STATIC_AI_LIBS="OFF" -DENABLE_STRICT_COMPILATION="OFF" -DENABLE_TEST="OFF" -DENABLE_TRANSLATIONS="OFF" -DFL_BACKTRACE="ON" -DFL_BUILD_BINARY="OFF" -DFL_BUILD_SHARED="OFF" -DFL_BUILD_STATIC="ON" -DFL_BUILD_TESTS="OFF" -DFL_USE_FLOAT="OFF" -DFORCE_BUNDLED_FL="ON"
-
+	cmake .. -DBIN_DIR:FILE="bin" -DCMAKE_INSTALL_PREFIX:FILE="." -DCOPY_CONFIG_ON_BUILD="ON" -DENABLE_DEBUG_CONSOLE="OFF" -DENABLE_EDITOR="OFF" -DENABLE_ERM="OFF" -DENABLE_GITVERSION="OFF" -DENABLE_LAUNCHER="OFF" -DENABLE_LUA="OFF" -DCMAKE_BUILD_TYPE="Release" -DENABLE_MONOLITHIC_INSTALL="ON" -DENABLE_MULTI_PROCESS_BUILDS="ON" -DENABLE_NULLKILLER_AI="ON" -DENABLE_PCH="OFF" -DENABLE_SINGLE_APP_BUILD="ON" -DENABLE_STATIC_AI_LIBS="ON" -DENABLE_STRICT_COMPILATION="OFF" -DENABLE_TEST="OFF" -DENABLE_TRANSLATIONS="OFF" -DFL_BACKTRACE="ON" -DFL_BUILD_BINARY="OFF" -DFL_BUILD_SHARED="OFF" -DFL_BUILD_STATIC="ON" -DFL_BUILD_TESTS="OFF" -DFL_USE_FLOAT="OFF" -DFORCE_BUNDLED_FL="ON"
 
     make
     
@@ -56,5 +52,3 @@ Some additional settings can be made in ./save/settings.json:
 ## Thanks
 
 A special thanks to the excellent folks on the [AmberELEC discord](https://discord.com/invite/R9Er7hkRMe), especially [Cebion](https://github.com/Cebion) for all the testing.
-
-

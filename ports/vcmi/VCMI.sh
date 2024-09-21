@@ -16,7 +16,7 @@ source $controlfolder/control.txt
 get_controls
 
 ## TODO: Change to PortMaster/tty when Johnnyonflame merges the changes in,
-CUR_TTY=/dev/tty0
+CUR_TTY="${CUR_TTY:/dev/tty0}"
 
 PORTDIR="/$directory/ports"
 GAMEDIR="$PORTDIR/vcmi"
@@ -33,9 +33,7 @@ printf "\033c" > $CUR_TTY
 printf "\033c" > $CUR_TTY
 ## RUN SCRIPT HERE
 
-if [ -f "$GAMEDIR/libs/libicudata.so.63.bz2" ]; then
-    bzip2 -fd "$GAMEDIR/libs/libicudata.so.63.bz2"
-fi
+export DEVICE_ARCH="$DEVICE_ARCH"
 
 if [[ ! -d "${GAMEDIR}/data/" ]]; then
   FILES_TO_REMOVE=()
@@ -58,7 +56,7 @@ if [[ ! -d "${GAMEDIR}/data/" ]]; then
     exit 1
   fi
 
-  LD_LIBRARY_PATH="${PWD}/libs:$LD_LIBRARY_PATH" bin/vcmibuilder --dest "${PWD}/data/" ${BUILDER_OPTIONS[@]}
+  LD_LIBRARY_PATH="${PWD}/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH" bin/vcmibuilder --dest "${PWD}/data/" ${BUILDER_OPTIONS[@]}
   $ESUDO rm -fRv ${FILES_TO_REMOVE[@]}
   cd $GAMEDIR
 fi
@@ -66,12 +64,12 @@ fi
 echo "Starting game." > $CUR_TTY
 
 export PORTMASTER_HOME="${GAMEDIR}"
-export LD_LIBRARY_PATH="${GAMEDIR}/libs:${LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${GAMEDIR}/libs.${DEVICE_ARCH}:${LD_LIBRARY_PATH}"
 export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
 $ESUDO chmod 666 /dev/uinput
 
-$GPTOKEYB "vcmiclient" &
-./bin/vcmiclient 2>&1 | $ESUDO tee -a ./log.txt
+$GPTOKEYB "vcmiclient.${DEVICE_ARCH}" &
+./bin/vcmiclient.${DEVICE_ARCH} 2>&1 | $ESUDO tee -a ./log.txt
 
 $ESUDO kill -9 $(pidof gptokeyb)
 $ESUDO killall -9 tee

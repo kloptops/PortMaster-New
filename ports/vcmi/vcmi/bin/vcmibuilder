@@ -17,12 +17,12 @@ if [ $# -eq 0 ] ; then
 	print_help=true
 fi
 
-INNOEXTRACT="$PWD/bin/innoextract"
-UNSHIELD="$PWD/bin/unshield"
-CUR_TTY=/dev/tty0
+INNOEXTRACT="$PWD/bin/innoextract.${DEVICE_ARCH}"
+UNSHIELD="$PWD/bin/unshield.${DEVICE_ARCH}"
+CUR_TTY="${CUR_TTY:/dev/tty0}"
 
-printf "\033c" > $CUR_TTY
-echo "Building game files, this could take a few minutes." > $CUR_TTY
+printf "\033c"
+echo "Building game files, this could take a few minutes."
 
 #!/bin/bash -e
 
@@ -202,7 +202,7 @@ then
 	data_dir="$temp_dir"/gog
 	mkdir -p "$data_dir"
 
-	echo "Extracting GoG Files" > $CUR_TTY
+	echo "Extracting GoG Files"
 
 	# innoextract always reports error (iconv 84 error). Just test file for presence
 	test -f "$gog_file" || fail "Error: gog.com executable was not found!"
@@ -220,7 +220,7 @@ if [[ -n "$cd1_dir" ]]
 then
 	data_dir="$temp_dir"/cddir
 	mkdir -p "$data_dir"
-	echo "Extracting CD1" > $CUR_TTY
+	echo "Extracting CD1"
 
 	${UNSHIELD} -d "$data_dir" x "$cd1_dir"/_setup/data1.cab || fail "Error: failed to extract from Install Shield installer!" "rm -rf $data_dir"
 
@@ -247,7 +247,7 @@ if [[ -n "$cd2_dir" ]]
 then
 	mkdir -p "$dest_dir"/Data
 
-	echo "Extracting CD2" > $CUR_TTY
+	echo "Extracting CD2"
 
 	if [ -d "$cd2_dir"/heroes3 ]
 	then
@@ -265,7 +265,7 @@ then
 	# bash also has `shopt -s nocaseglob` but we don't want this to
 	# accidentally influence other parts of this script
 	# since the directory names are short, we use this pattern matching
-	echo "Copying Game Files." > $CUR_TTY
+	echo "Copying Game Files."
 	cp -r "$data_dir"/[Dd][Aa][Tt][Aa] "$dest_dir"
 	cp -r "$data_dir"/[Mm][Aa][Pp][Ss] "$dest_dir"
 	cp -r "$data_dir"/[Mm][Pp]3 "$dest_dir"
@@ -274,7 +274,7 @@ fi
 if [[ -n "$useffmpeg" ]]
 then
 	# now when all music files were installed convert them to ogg
-	echo "Converting mp3 files..." > $CUR_TTY
+	echo "Converting mp3 files..."
 
 	OIFS="$IFS"
 	IFS=$'\n'
@@ -299,4 +299,4 @@ then
 fi
 
 rm -rf "$temp_dir"
-echo "Done." > $CUR_TTY
+echo "Done."
