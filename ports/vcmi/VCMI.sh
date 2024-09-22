@@ -57,8 +57,15 @@ if [[ ! -d "${GAMEDIR}/data/" ]]; then
   fi
 
   LD_LIBRARY_PATH="${PWD}/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH" bin/vcmibuilder --dest "${PWD}/data/" ${BUILDER_OPTIONS[@]}
-  $ESUDO rm -fRv ${FILES_TO_REMOVE[@]}
+  if [ ! -f "$GAMEDIR/dont_delete_files" ]; then
+    $ESUDO rm -fRv ${FILES_TO_REMOVE[@]}
+  fi
   cd $GAMEDIR
+fi
+
+if [ ! -f "$GAMEDIR/save/settings.json" ]; then
+  # Copy settings.
+  cp -v "$GAMEDIR/save/settings.json.${DEVICE_ARCH}" "$GAMEDIR/save/settings.json"
 fi
 
 echo "Starting game." > $CUR_TTY
