@@ -182,6 +182,10 @@ local function updateCrosshair()
 end
 
 local function onUpdate(dt)
+    if dt <= 0 then
+        return
+    end
+
     camera.setExtraPitch(0)
     camera.setExtraYaw(0)
     camera.setExtraRoll(0)
@@ -239,6 +243,7 @@ return {
     interfaceName = 'Camera',
     ---
     -- @module Camera
+    -- @context player
     -- @usage require('openmw.interfaces').Camera
     interface = {
         --- Interface version is 1

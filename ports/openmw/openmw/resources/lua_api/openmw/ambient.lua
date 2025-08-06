@@ -1,6 +1,6 @@
 ---
--- `openmw.ambient` controls background 2D sounds specific to a given player.
--- Can be used only by menu scripts and local scripts that are attached to a player.
+-- Controls background 2D sounds specific to a given player.
+-- @context menu|player
 -- @module ambient
 -- @usage local ambient = require('openmw.ambient')
 
@@ -18,7 +18,7 @@
 --   * `scale` - a boolean, to set if the sound's pitch should be scaled by simulation time scaling (default: true);
 --   * `loop` - a boolean, to set if the sound should be repeated when it ends (default: false);
 -- @usage local params = {
---    timeOffset=0.1
+--    timeOffset=0.1,
 --    volume=0.3,
 --    scale=false,
 --    pitch=1.0,
@@ -38,7 +38,7 @@
 --   * `scale` - a boolean, to set if the sound's pitch should be scaled by simulation time scaling (default: true);
 --   * `loop` - a boolean, to set if the sound should be repeated when it ends (default: false);
 -- @usage local params = {
---    timeOffset=0.1
+--    timeOffset=0.1,
 --    volume=0.3,
 --    scale=false,
 --    pitch=1.0,
