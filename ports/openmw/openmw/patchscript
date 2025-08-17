@@ -160,6 +160,9 @@ install_game() {
 }
 
 install_mods() {
+    ## DEPRECATED
+    return
+
     log "Installing mods"
 
     if [ ! -f "$SEVEN_ZIP" ]; then
@@ -188,35 +191,6 @@ install_mods() {
         append_to_cfg "Patch for Purists.esm"
         append_to_cfg "Patch for Purists - Book Typos.ESP"
         append_to_cfg "Patch for Purists - Semi-Purist Fixes.ESP"
-    fi
-
-    BHEAD_ARCHIVE=$(find_mod 'Better Heads-*.rar')
-    if [ -n "$BHEAD_ARCHIVE" ]; then
-        log "--- Installing Better Heads ---"
-        extract_mod "$BHEAD_ARCHIVE"
-
-        move_contents "." "$DATA_DIR"
-        move_contents "Better_Heads_Extras/ESPs" "$DATA_DIR"
-
-        append_to_cfg "Better Heads.esm"
-        append_to_cfg "Better Heads Tribunal addon.esm"
-        append_to_cfg "Better Heads Bloodmoon addon.esm"
-
-        append_to_cfg "Better Heads.esp"
-        append_to_cfg "Better Heads Tribunal addon.esp"
-        append_to_cfg "Better Heads Bloodmoon addon.esp"
-    fi
-
-    if [ -n "$BBOD_ARCHIVE" ]; then
-        log "--- Installing Better Bodies ---"
-        extract_mod "$BBOD_ARCHIVE"
-
-        VERSION="Underwear"
-        # VERSION="Nude"
-
-        move_contents "$VERSION/Data Files" "$DATA_DIR"
-
-        append_to_cfg "Better Bodies.esp"
     fi
 
     # Install "Morrowind Optimization Patch"
@@ -277,6 +251,55 @@ install_mods() {
         move_contents "09 BC Mushrooms - Smoothed" "$DATA_DIR"
     fi
 
+    BHEAD_ARCHIVE=$(find_mod 'Better Heads-*.rar')
+    if [ -n "$BHEAD_ARCHIVE" ]; then
+        log "--- Installing Better Heads ---"
+        extract_mod "$BHEAD_ARCHIVE"
+
+        move_contents "." "$DATA_DIR"
+        move_contents "Better_Heads_Extras/ESPs" "$DATA_DIR"
+
+        append_to_cfg "Better Heads.esm"
+        append_to_cfg "Better Heads Tribunal addon.esm"
+        append_to_cfg "Better Heads Bloodmoon addon.esm"
+
+        append_to_cfg "Better Heads.esp"
+        append_to_cfg "Better Heads Tribunal addon.esp"
+        append_to_cfg "Better Heads Bloodmoon addon.esp"
+    fi
+
+    if [ -n "$BBOD_ARCHIVE" ]; then
+        log "--- Installing Better Bodies ---"
+        extract_mod "$BBOD_ARCHIVE"
+
+        VERSION="Underwear"
+        # VERSION="Nude"
+
+        move_contents "$VERSION/Data Files" "$DATA_DIR"
+
+        append_to_cfg "Better Bodies.esp"
+    fi
+
+    MWE_ARCHIVE=$(find_mod "Morrowind Weapons Expansion-*.7z")
+    if [ -n "$GH_ARCHIVE" ]; then
+        log "--- Installing Morrowind Weapons Expansion ---"
+        extract_mod "$GH_ARCHIVE"
+
+        # Optional
+    fi
+
+    BMA_ARCHIVE=$(find_mod "Better Morrowind Armor ENG-*.7z")
+    if [ -n "$GH_ARCHIVE" ]; then
+        log "--- Installing Graphical Herbalism ---"
+        extract_mod "$GH_ARCHIVE"
+
+        # Move and replace only particular directories
+        move_contents "00 Core + Vanilla Meshes/meshes" "$DATA_DIR/meshes"
+        move_contents "00 Core + Vanilla Meshes/textures" "$DATA_DIR/textures"
+
+        # Optional
+    fi
+
     # Install "Graphical Herbalism"
     if [ -n "$GH_ARCHIVE" ]; then
         log "--- Installing Graphical Herbalism ---"
@@ -333,16 +356,6 @@ install_mods() {
         append_to_cfg "Accurate Attack.esp"
     fi
 
-    TA_ARCHIVE=$(find_mod "openmw-takeall-*.zip")
-    if [ -n "$TA_ARCHIVE" ]; then
-        log "--- Installing OpenMW Take All ---"
-        extract_mod "$TA_ARCHIVE"
-
-        move_contents "." "$DATA_DIR"
-
-        append_to_cfg "takeall.omwscripts"
-    fi
-
     UNUSED_MODS_COUNT="$(ls -1 "$MODS_DIR" | wc -l)"
     if [ "$UNUSED_MODS_COUNT" -gt 0 ]; then
         log "Found ${UNUSED_MODS_COUNT} unused mods, moved to mods_unused directory."
@@ -364,11 +377,11 @@ process_game() {
 
     sleep 1
 
-    if [ "$(ls -1 "$GAMEDIR/mods" | wc -l)" -gt 0 ]; then
-        install_mods
+    # if [ "$(ls -1 "$GAMEDIR/mods" | wc -l)" -gt 0 ]; then
+    #     install_mods
 
-        sleep 1
-    fi
+    #     sleep 1
+    # fi
 
     # Final completion message
     echo "Patching process complete!"

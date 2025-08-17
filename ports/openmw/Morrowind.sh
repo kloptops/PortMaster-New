@@ -139,17 +139,10 @@ for directory in "$GAMEDIR/data" "$GAMEDIR"; do
     done
 done
 
-MOD_COUNT="$(ls -1 "$GAMEDIR/mods" | wc -l)"
-
-if [ -n "$INSTALLER_FILE" ] || [ "$MOD_COUNT" -gt "0" ]; then
+if [ -n "$INSTALLER_FILE" ]; then
     export PATCHER_FILE="$GAMEDIR/patchscript"
     export PATCHER_GAME="$(basename "${0%.*}")"
-    if [ -n "$INSTALLER_FILE" ]; then
-        export PATCHER_TIME="about 6 minutes"
-    else
-        # Who knows with mods.
-        export PATCHER_TIME="an amount of time"
-    fi
+    export PATCHER_TIME="about 6 minutes"
 
     if [ -f "$controlfolder/utils/patcher.txt" ]; then
         source "$controlfolder/utils/patcher.txt"
@@ -259,6 +252,17 @@ if [ "$LIBGL_SHRINK" -gt 0 ]; then
     echo "===================================="
     echo "= LIBGL_SHRINK=$LIBGL_SHRINK"
     echo "===================================="
+fi
+
+## MOD MANAGER -- Not yet compiled for x86_64
+if [ ! -f "$GAMEDIR/skip_openmw_esmm" ] && [ -f "$GAMEDIR/openmw_esmm.$DEVICE_ARCH" ]; then
+    $GPTOKEYB "openmw_esmm.$DEVICE_ARCH" &
+    pm_platform_helper "$GAMEDIR/openmw_esmm.$DEVICE_ARCH"
+    if ! "$GAMEDIR/openmw_esmm.$DEVICE_ARCH" --7zz "$controlfolder/7zzs.$DEVICE_ARCH"; then
+        pm_gptokeyb_finish
+        exit 0
+    fi
+    pm_gptokeyb_finish
 fi
 
 $GPTOKEYB2 "$GAME_EXECUTABLE" -c "$GAMEDIR/$GPTK_FILENAME" > /dev/null &
