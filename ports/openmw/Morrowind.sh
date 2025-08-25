@@ -256,10 +256,14 @@ fi
 
 ## MOD MANAGER -- Not yet compiled for x86_64
 if [ ! -f "$GAMEDIR/skip_openmw_esmm" ] && [ -f "$GAMEDIR/openmw_esmm.$DEVICE_ARCH" ]; then
+    if [ ! -f "mlox_base.txt" ]; then
+        # Fetch mlox rules as we cannot distribute them.
+        curl https://raw.githubusercontent.com/DanaePlays/mlox-rules/main/mlox_base.txt -o mlox_base.txt
+        curl https://raw.githubusercontent.com/DanaePlays/mlox-rules/main/mlox_user.txt -o mlox_user.txt
+    fi
     $GPTOKEYB "openmw_esmm.$DEVICE_ARCH" &
     pm_platform_helper "$GAMEDIR/openmw_esmm.$DEVICE_ARCH"
-    if ! "$GAMEDIR/openmw_esmm.$DEVICE_ARCH" --7zz "$controlfolder/7zzs.$DEVICE_ARCH"; then
-        pm_gptokeyb_finish
+    if ! "$GAMEDIR/openmw_esmm.$DEVICE_ARCH" --config-file "$GAMEDIR/openmw/openmw.cfg" --7zz "$controlfolder/7zzs.$DEVICE_ARCH"; then        pm_gptokeyb_finish
         exit 0
     fi
     pm_gptokeyb_finish
