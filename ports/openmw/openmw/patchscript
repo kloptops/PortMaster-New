@@ -7,7 +7,7 @@ LOGERR="$GAMEDIR/patch_error.txt"
 
 SEVEN_ZIP="$controlfolder/7zzs.${DEVICE_ARCH}"
 # Will swap to `$controlfolder` when GUI pushes to main. :tottered:
-INNOEXTRACT="$GAMEDIR/innoextract.${DEVICE_ARCH}"
+INNOEXTRACT="innoextract"
 MODS_DIR="$GAMEDIR/mods"
 UNUSED_MODS_DIR="$GAMEDIR/mods_unused"
 DATA_DIR="$GAMEDIR/data"

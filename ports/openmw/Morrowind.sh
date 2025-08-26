@@ -46,6 +46,15 @@ fi
 
 cd $GAMEDIR
 
+export PATH="$GAMEDIR/bin.${DEVICE_ARCH}:$PATH"
+
+# Arch library paths.
+export LD_LIBRARY_PATH="$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
+
+# CFW Specific
+[ -e "$GAMEDIR/libs.${CFW_NAME}.${DEVICE_ARCH}" ] && export LD_LIBRARY_PATH="$GAMEDIR/libs.${CFW_NAME}.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
+[ -e "$GAMEDIR/libs.${CFW_NAME}" ] && export LD_LIBRARY_PATH="$GAMEDIR/libs.${CFW_NAME}:$LD_LIBRARY_PATH"
+
 # Extract a pre-computed navmesh.db if it exists, and we can.
 if [ -f "$controlfolder/7zzs.${DEVICE_ARCH}" ]; then
     NAVMESH_DB_XZ="openmw/navmesh.db.xz"
@@ -183,13 +192,6 @@ else
     source "${controlfolder}/libgl_default.txt"
 fi
 
-# Arch library paths.
-export LD_LIBRARY_PATH="$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
-
-# CFW Specific
-[ -e "$GAMEDIR/libs.${CFW_NAME}.${DEVICE_ARCH}" ] && LD_LIBRARY_PATH="$GAMEDIR/libs.${CFW_NAME}.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
-[ -e "$GAMEDIR/libs.${CFW_NAME}" ] && LD_LIBRARY_PATH="$GAMEDIR/libs.${CFW_NAME}:$LD_LIBRARY_PATH"
-
 # More settings.
 PRELOAD="$GAMEDIR/libcrusty.so"
 
@@ -255,23 +257,25 @@ if [ "$LIBGL_SHRINK" -gt 0 ]; then
 fi
 
 ## MOD MANAGER -- Not yet compiled for x86_64
-if [ ! -f "$GAMEDIR/skip_openmw_esmm" ] && [ -f "$GAMEDIR/openmw_esmm.$DEVICE_ARCH" ]; then
+if [ ! -f "$GAMEDIR/skip_openmw_esmm" ] && [ -f "$GAMEDIR/bin.$DEVICE_ARCH/openmw_esmm" ]; then
     if [ ! -f "mlox_base.txt" ]; then
         # Fetch mlox rules as we cannot distribute them.
         curl https://raw.githubusercontent.com/DanaePlays/mlox-rules/main/mlox_base.txt -o mlox_base.txt
         curl https://raw.githubusercontent.com/DanaePlays/mlox-rules/main/mlox_user.txt -o mlox_user.txt
     fi
-    $GPTOKEYB "openmw_esmm.$DEVICE_ARCH" &
-    pm_platform_helper "$GAMEDIR/openmw_esmm.$DEVICE_ARCH"
-    if ! "$GAMEDIR/openmw_esmm.$DEVICE_ARCH" --config-file "$GAMEDIR/openmw/openmw.cfg" --7zz "$controlfolder/7zzs.$DEVICE_ARCH"; then        pm_gptokeyb_finish
+
+    $GPTOKEYB "openmw_esmm" &
+    pm_platform_helper "$GAMEDIR/bin.$DEVICE_ARCH/openmw_esmm"
+    if ! "openmw_esmm" --config-file "$GAMEDIR/openmw/openmw.cfg" --7zz "$controlfolder/7zzs.$DEVICE_ARCH"; then
+        pm_gptokeyb_finish
         exit 0
     fi
     pm_gptokeyb_finish
 fi
 
-$GPTOKEYB2 "$GAME_EXECUTABLE" -c "$GAMEDIR/$GPTK_FILENAME" > /dev/null &
-pm_platform_helper "$GAMEDIR/$GAME_EXECUTABLE"
-LD_PRELOAD="$PRELOAD" $GAMEDIR/$GAME_EXECUTABLE
+$GPTOKEYB2 "openmw" -c "$GAMEDIR/$GPTK_FILENAME" > /dev/null &
+pm_platform_helper "$GAMEDIR/bin.$DEVICE_ARCH/openmw"
+LD_PRELOAD="$PRELOAD" openmw
 
 pm_finish
 
