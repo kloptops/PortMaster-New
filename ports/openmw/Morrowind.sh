@@ -239,6 +239,8 @@ if [ "$DEVICE_RAM" -gt "1" ]; then
     # Disable on more than 1gb ram.
     export LIBGL_RECOMPTEX=0
     export LIBGL_SHRINK=0
+else
+    export LIBGL_RECOMPTEX=1
 fi
 
 # Setup texture potato-ification
@@ -273,9 +275,9 @@ if [ ! -f "$GAMEDIR/skip_openmw_esmm" ] && [ -f "$GAMEDIR/bin.$DEVICE_ARCH/openm
     pm_gptokeyb_finish
 fi
 
-$GPTOKEYB2 "openmw" -c "$GAMEDIR/$GPTK_FILENAME" > /dev/null &
-pm_platform_helper "$GAMEDIR/bin.$DEVICE_ARCH/openmw"
-LD_PRELOAD="$PRELOAD" openmw
+$GPTOKEYB2 "$GAME_EXECUTABLE" -c "$GAMEDIR/$GPTK_FILENAME" > /dev/null &
+pm_platform_helper "$GAMEDIR/$GAME_EXECUTABLE"
+LD_PRELOAD="$PRELOAD" ./$GAME_EXECUTABLE
 
 pm_finish
 
