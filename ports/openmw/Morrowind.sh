@@ -239,8 +239,6 @@ if [ "$DEVICE_RAM" -gt "1" ]; then
     # Disable on more than 1gb ram.
     export LIBGL_RECOMPTEX=0
     export LIBGL_SHRINK=0
-else
-    export LIBGL_RECOMPTEX=1
 fi
 
 # Setup texture potato-ification
