@@ -126,6 +126,7 @@ def main():
         sys.exit(0)
 
     try:
+        print(f"Reading {args.openmw_config}")
         with open(args.openmw_config, 'r', encoding='utf-8') as f:
             original_lines = f.readlines()
     except Exception as e:
@@ -148,8 +149,18 @@ def main():
         else:
             other_lines.append(line)
 
+    print("Before:")
+    for i, data_item in enumerate(data_items):
+        print(f"- {i}: {data_item['line']}")
+    print("\n")
+
     # Sort by priority first, then alphabetically by the matched string as a tie-breaker.
     sorted_items = sorted(data_items, key=lambda item: (item['key'][0], item['key'][1], item['path'].lower()))
+
+    print("After:")
+    for i, data_item in enumerate(sorted_items):
+        print(f"- {i}: {data_item['line']}")
+    print("\n")
 
     if args.dry_run:
         print("--- Dry Run: No files will be changed. ---")
@@ -175,8 +186,9 @@ def main():
                 else:
                     f.write(line)
 
-        print("Successfully sorted and saved openmw.cfg.")
+        print(f"Successfully sorted and saved {args.openmw_config}.")
     except Exception as e:
+        print(f"Unable to save {args.openmw_config}.")
         print(f"ESMM::ALERT::Error::Could not write to openmw.cfg: {e}")
         sys.exit(1)
 

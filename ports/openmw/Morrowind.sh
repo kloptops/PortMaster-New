@@ -215,17 +215,17 @@ elif [ "$CFW_NAME" = "ROCKNIX" ]; then
         exit 1
     fi
 
-    # Cursor auto-hide if on rocknix
-    swaymsg 'seat * hide_cursor 1'
+    if [[ "$UI_SERVICE" == *"sway"* ]]; then
+        # Cursor auto-hide if on rocknix
+        swaymsg 'seat * hide_cursor 1'
+    else
+        # On the OGU this breaks stuff.
+        PRELOAD=""
+    fi
 
     # Fixes weird sound on ROCKNIX - thanks bmdhacks!
     ROCKNIX_QUANTUM_SAVE="$(pw-metadata -n settings | grep 'clock.force-quantum' | cut -d"'" -f 4)"
     pw-metadata -n settings 0 clock.force-quantum 960
-elif [ "$CFW_NAME" = "knulli" ]; then
-    # POTATO MODE ACTIVATED
-    export LIBGL_RECOMPTEX=1
-    export LIBGL_SHRINK=3
-
 elif [ "$CFW_NAME" = "AmberELEC" ]; then
     # THIS IS SO FUCKING DUMB
     CRUSTY_CURSOR_FILE=$GAMEDIR/blank_cursor.bmp
@@ -235,26 +235,6 @@ elif [ "$CFW_NAME" = "ArkOS" ] && [ "$DEVICE_CPU" = "Cortex-A35" ] || [ "$DEVICE
     CRUSTY_CURSOR_FILE=$GAMEDIR/blank_cursor.bmp
 fi
 
-if [ "$DEVICE_RAM" -gt "1" ]; then
-    # Disable on more than 1gb ram.
-    export LIBGL_RECOMPTEX=0
-    export LIBGL_SHRINK=0
-fi
-
-# Setup texture potato-ification
-if [ "$LIBGL_SHRINK" -gt 0 ]; then
-    mkdir -p "$LIBGL_TEXPATH"
-
-    if [ -f "$LIBGL_TEXPATH/shrinky_dink" ] && [ "$(< "$LIBGL_TEXPATH"/shrinky_dink)" -ne "$LIBGL_SHRINK" ]; then
-        rm -fR "$LIBGL_TEXPATH"/*
-    fi
-
-    echo "$LIBGL_SHRINK" > "$LIBGL_TEXPATH/shrinky_dink"
-
-    echo "===================================="
-    echo "= LIBGL_SHRINK=$LIBGL_SHRINK"
-    echo "===================================="
-fi
 
 ## MOD MANAGER -- Not yet compiled for x86_64
 if [ ! -f "$GAMEDIR/skip_openmw_esmm" ] && [ -f "$GAMEDIR/bin.$DEVICE_ARCH/openmw_esmm" ]; then

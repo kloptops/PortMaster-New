@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 #
-# TITLE: Netch Leather Compressor
+# TITLE: Netch Compressor
 # AUTHOR: kloptops
 # DESCRIPTION: Stateful Texture Management & Compression. Discovers, catalogs, and compresses Morrowind textures to KTX/ASTC format.
 # ARGS: --esmm-progress --openmw-cfg openmw/openmw.cfg --db-path netch_compressor.db --quality $QUALITY --block-size $BLOCK_SIZE --cancel-file $CANCEL_FILE
 # HAS_OUTPUT: TRUE
 # HAS_PROGRESS: TRUE
 # CAN_CANCEL: TRUE
+# REGISTER: RUN_BEFORE_LAUNCH
 #
 # QUALITY_TYPE: SELECT
 # QUALITY_OPTIONS: fastest;fast;medium;thorough;verythorough;exhaustive
@@ -18,29 +19,46 @@
 #
 
 import argparse
+import multiprocessing
 import os
-import sqlite3
-import subprocess
-import sys
+import pickle
 import shutil
 import struct
+import subprocess
+import sys
+import tempfile
 import threading
 import time
 import traceback
-import multiprocessing
 
 from collections import namedtuple, deque
 from pathlib import Path
-from queue import Empty as QueueEmpty # Use a specific import for clarity
+from queue import Queue, Empty as QueueEmpty # Use a specific import for clarity
 from types import TracebackType
 from typing import Optional, Type, ContextManager
 
 # --- Constants & Configuration ---
 MOD_NAME = "Netch Leather Compressor"
 SUPPORTED_EXTENSIONS = ('.tga', '.bmp', '.dds')
-QUALITY_HIERARCHY = {'fastest': 0, 'fast': 1, 'medium': 2, 'thorough': 3, 'verythorough': 4, 'exhaustive': 5}
-TOTAL_RESOURCES = 5
+QUALITY_HIERARCHY = {
+    'fastest': 0, 'fast': 1, 'medium': 2, 'thorough': 3, 'verythorough': 4, 'exhaustive': 5}
 
+QUALITY_VALUE = {
+    'fastest': 0,
+    'fast': 25,
+    'medium': 50,
+    'thorough': 75,
+    'verythorough': 90,
+    'exhaustive': 100,
+    }
+
+BAD_CHECK_DIRECTORIES = (
+    'animations',
+    # Meshes is a huge timesink.
+    'meshes',
+    'music',
+    'sound',
+    )
 
 CANNOT_CONTAIN = ("menu_", "_menu", "_cursor", "cursor_")
 CANNOT_ENDWITH = (
@@ -212,146 +230,151 @@ def esmm_error(title, message):
 
 
 # --- Core Classes ---
-class _DatabaseConnection:
+class CacheManager:
     """
-    A private class that handles the raw SQLite connection and operations.
-    This class is NOT multiprocessing-safe and is only ever used inside the
-    single, dedicated DatabaseProcess.
+    Manages an in-memory texture cache using a dedicated thread.
+
+    This provides a high-performance, thread-safe, and multiprocessing-safe
+    way to read and write texture metadata. The cache is loaded from a pickle
+    file at startup and saved back at shutdown.
     """
-    def __init__(self, db_path: Path):
-        self._conn = sqlite3.connect(db_path, timeout=30)
-        self._initialize_schema()
+    def __init__(self, cache_path: Path, manager):
+        self._cache_path = cache_path
+        self._request_queue = manager.Queue()
+        self._shutdown_event = manager.Event()
+        self._thread = None
+        self._cache = {}
 
-    def _initialize_schema(self):
-        cursor = self._conn.cursor()
-        cursor.execute("PRAGMA journal_mode = WAL")
-        cursor.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)")
-        cursor.execute("SELECT value FROM metadata WHERE key = 'schema_version'")
-        row = cursor.fetchone()
-        schema_version = int(row[0]) if row else 1
-        if schema_version < 3:
-            self._upgrade_schema_to_v3(cursor)
-        self._conn.commit()
+    def _load_cache_from_disk(self):
+        """Loads the cache from a pickle file if it exists."""
+        if not self._cache_path.exists():
+            print("No cache file found. Starting with a fresh cache.")
+            return
 
-    def _upgrade_schema_to_v3(self, cursor: sqlite3.Cursor):
         try:
-            if cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='texture_cache'").fetchone():
-                cursor.execute("ALTER TABLE texture_cache RENAME TO texture_cache_old")
-            cursor.execute("""
-                CREATE TABLE texture_cache (
-                    source_key TEXT PRIMARY KEY, source_mtime REAL NOT NULL, source_size INTEGER NOT NULL,
-                    width INTEGER NOT NULL, height INTEGER NOT NULL, block_size TEXT, quality TEXT
-                )""")
-            if cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='texture_cache_old'").fetchone():
-                cursor.execute("PRAGMA table_info(texture_cache_old)")
-                old_cols = [info[1] for info in cursor.fetchall()]
-                cols_to_copy = [c for c in ['source_key', 'source_mtime', 'source_size', 'width', 'height', 'block_size', 'quality'] if c in old_cols]
-                if cols_to_copy:
-                    cols_str = ", ".join(cols_to_copy)
-                    cursor.execute(f"INSERT INTO texture_cache ({cols_str}) SELECT {cols_str} FROM texture_cache_old")
-                cursor.execute("DROP TABLE texture_cache_old")
-            cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', '3')")
-            self._conn.commit()
-        except sqlite3.Error as e:
-            self._conn.rollback(); raise RuntimeError(f"Failed to upgrade database schema: {e}")
+            with open(self._cache_path, 'rb') as f:
+                self._cache = pickle.load(f)
+            print(f"Successfully loaded {len(self._cache)} entries from cache.")
+        except (pickle.UnpicklingError, EOFError, Exception) as e:
+            print(f"Warning: Could not load cache file '{self._cache_path}'. "
+                  f"Starting with a fresh cache. Reason: {e}")
+            self._cache = {}
 
-    # The actual database operation methods remain the same
-    def get_cache_entry(self, source_key: str):
-        cursor = self._conn.cursor()
-        cursor.execute("SELECT source_mtime, source_size, width, height, block_size, quality FROM texture_cache WHERE source_key = ?", (source_key,))
-        return cursor.fetchone()
+    def _save_cache_to_disk(self, quiet=False):
+        """Saves the current in-memory cache to a pickle file."""
+        if not quiet:
+            print(f"Saving {len(self._cache)} cache entries to disk...")
+        try:
+            # Write to a temporary file first for atomicity
+            temp_path = self._cache_path.with_suffix('.tmp')
+            with open(temp_path, 'wb') as f:
+                pickle.dump(self._cache, f, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            # Atomically rename/replace the old cache file
+            os.replace(temp_path, self._cache_path)
+            if not quiet:
+                print("Cache saved successfully.")
+        except Exception as e:
+            print(f"CRITICAL: Failed to save cache to '{self._cache_path}'. "
+                  f"Reason: {e}", file=sys.stderr)
 
-    def update_metadata(self, source_key: str, mtime: float, size: int, width: int, height: int):
-        cursor = self._conn.cursor()
-        cursor.execute("""
-            INSERT INTO texture_cache (source_key, source_mtime, source_size, width, height) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(source_key) DO UPDATE SET
-                source_mtime=excluded.source_mtime, source_size=excluded.source_size,
-                width=excluded.width, height=excluded.height
-        """, (source_key, mtime, size, width, height))
-        self._conn.commit()
+    def _update_compression_details(self, key, new_data):
+        data = self._cache.get(key, None)
+        if data is None:
+            return
 
-    def update_compression_details(self, source_key: str, block_size: str, quality: str):
-        cursor = self._conn.cursor()
-        cursor.execute("UPDATE texture_cache SET block_size=?, quality=? WHERE source_key=?", (block_size, quality, source_key))
-        self._conn.commit()
+        mtime, size, w, h, _, _ = data
 
-    def close(self):
-        self._conn.close()
+        self._cache[key] = (mtime, size, w, h, new_data[0], new_data[1])
 
+    def _run(self):
+        """The main loop for the dedicated cache management thread."""
+        print("Cache manager thread started.")
+        self._load_cache_from_disk()
 
-class DatabaseProcess(multiprocessing.Process):
-    """A dedicated process that owns the SQLite connection and acts as a server."""
-    def __init__(self, db_path: Path, request_queue, shutdown_event):
-        super().__init__(daemon=True)
-        self.db_path = db_path
-        self.request_queue = request_queue
-        self.shutdown_event = shutdown_event
-        self.db_conn = None
-        self.clients = {} # Maps client_id to its response_queue
-
-    def run(self):
-        print("Database process started.")
-        self.db_conn = _DatabaseConnection(self.db_path)
         commands = {
-            "get_cache_entry": self.db_conn.get_cache_entry,
-            "update_metadata": self.db_conn.update_metadata,
-            "update_compression_details": self.db_conn.update_compression_details,
+            'get': self._cache.get,
+            'set': self._cache.__setitem__,
+            'update_compression_details': self._update_compression_details,
         }
-        while not self.shutdown_event.is_set():
+
+        update_commands = (
+            'set',
+            'update_compression_details')
+
+        # We save every 100 updates.
+        updates = 0
+
+        while not self._shutdown_event.is_set():
             try:
-                request = self.request_queue.get(timeout=0.5)
-                if request is None: break
+                # Wait for a request from any other thread/process.
+                request = self._request_queue.get(timeout=0.5)
+                command, args, response_queue = request
 
-                command, client_id, args, response_queue = request
-                
-                # Handle special registration commands
-                if command == 'register_client':
-                    self.clients[client_id] = response_queue
-                    continue
-                if command == 'deregister_client':
-                    self.clients.pop(client_id, None)
-                    continue
-
-                # Execute the database command
+                # Execute the command (get or set).
                 result = commands[command](*args)
-                
-                # Send the response back to the correct client
-                if response_queue and client_id in self.clients:
-                    self.clients[client_id].put(result)
 
-            except Exception:
-                continue
-        self.db_conn.close()
-        print("Database process shut down.")
+                # If the requester is waiting for a response (only for 'get'), send it back.
+                if response_queue:
+                    response_queue.put(result)
 
+                if command in update_commands:
+                    updates += 1
+                    if updates > 100:
+                        self._save_cache_to_disk(quiet=True)
+                        updates = 0
 
-class DatabaseProxy:
-    """
-    A client-side proxy that makes interacting with the DatabaseProcess easy.
-    This object is what your other processes and threads will use.
-    """
+            except QueueEmpty:
+                continue  # Just means no work to do, loop again.
+            except Exception as e:
+                print(f"Error in cache manager thread: {e}", file=sys.stderr)
+
+        self._save_cache_to_disk()
+        print("Cache manager thread shut down.")
+
+    def start(self):
+        """Starts the cache manager thread."""
+        if self._thread is not None:
+            return  # Already started
+
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        """Signals the cache manager thread to shut down and waits for it."""
+        if self._thread is None:
+            return # Never started
+
+        print("Shutting down cache manager...")
+        self._shutdown_event.set()
+        self._thread.join(timeout=5)
+
+    # --- Public Interface ---
+    # These methods are what your other threads/processes will call.
+
+class CacheManagerClient:
     def __init__(self, request_queue, manager):
-        self.request_queue = request_queue
-        self.client_id = os.getpid() # Use process ID as a unique client ID
-        self.response_queue = manager.Queue(1)
-        # Register this client with the server process
-        self.request_queue.put(('register_client', self.client_id, (), self.response_queue))
+        self._request_queue = request_queue
+        self._manager = manager
 
     def get_cache_entry(self, source_key: str):
-        self.request_queue.put(('get_cache_entry', self.client_id, (source_key,), True))
-        return self.response_queue.get()
+        """Requests a cache entry. This is a blocking call."""
+        # This temporary queue is local to the calling thread.
+        response_queue = self._manager.Queue(1)
+        self._request_queue.put(('get', (source_key, None), response_queue)) # .get needs a default
+        return response_queue.get()
 
-    def update_metadata(self, source_key: str, mtime: float, size: int, width: int, height: int):
-        self.request_queue.put(('update_metadata', self.client_id, (source_key, mtime, size, width, height), False))
+    def update_cache_entry(self, source_key: str, data: tuple):
+        """
+        Updates a cache entry. This is a non-blocking, "fire and forget" call.
+        """
+        self._request_queue.put(('set', (source_key, data), None))
 
-    def update_compression_details(self, source_key: str, block_size: str, quality: str):
-        self.request_queue.put(('update_compression_details', self.client_id, (source_key, block_size, quality), False))
-        
-    def close(self):
-        """Tells the server to forget about this client."""
-        self.request_queue.put(('deregister_client', self.client_id, (), None))
-
+    def update_compression_details(self, source_key, block_size, quality):
+        """
+        Updates a compression details shortcut. This is a non-blocking, "fire and forget" call.
+        """
+        self._request_queue.put(('update_compression_details', (source_key, (block_size, quality)), None))
 
 # --- Worker and Processor Functions ---
 def calculate_resource_cost(texture_item) -> int:
@@ -367,41 +390,47 @@ def calculate_resource_cost(texture_item) -> int:
     return 1
 
 
-worker_db_proxy = None
-def init_texture_processor_worker(db_request_queue, manager):
+worker_manager = None
+def init_texture_processor_worker(manager):
     """Initializer for each worker in the multiprocessing pool."""
-    global worker_db_proxy
+    global worker_manager
+    worker_manager = manager
     print(f"Initializing worker {os.getpid()}...")
-    worker_db_proxy = DatabaseProxy(db_request_queue, manager)
 
-def texture_processor_worker(texture_queue, done_queue, resource_manager, cancel_event, args):
+
+def texture_processor_worker(texture_queue, cache_queue, done_queue, resource_manager, cancel_event, args):
     """A worker process that consumes textures, processes them, and reports results."""
-    # Each process needs its own DB connection, but we can reuse the manager
-    global worker_db_proxy
-    db_proxy = worker_db_proxy
 
-    while not cancel_event.is_set():
-        try:
-            texture_item = texture_queue.get()
-            if texture_item is None: # Poison pill
-                break
+    global worker_manager
+    cache = CacheManagerClient(cache_queue, worker_manager)
 
-            cost = calculate_resource_cost(texture_item)
-            with resource_manager.get_acquirer(cost):
-                if cancel_event.is_set():
-                    break # Check again after acquiring resources
+    temp_dir = None
+    try:
+        temp_dir = Path(tempfile.mkdtemp(prefix=f'nlc_{os.getpid()}_'))
 
-                result = process_single_texture(texture_item, db_proxy, args)
-                done_queue.put(result)
+        while not cancel_event.is_set():
+            try:
+                texture_item = texture_queue.get()
+                if texture_item is None: # Poison pill
+                    break
 
-        except Exception as e:
-            # Report failure for this specific texture
-            done_queue.put({'status': 'failed', 'info': texture_item[1], 'error': str(e)})
+                cost = calculate_resource_cost(texture_item)
+                with resource_manager.get_acquirer(cost):
+                    if cancel_event.is_set():
+                        break # Check again after acquiring resources
 
-    db_proxy.close()
+                    result = process_single_texture(texture_item, cache, args, temp_dir)
+                    done_queue.put(result)
+
+            except Exception as e:
+                # Report failure for this specific texture
+                done_queue.put({'status': 'failed', 'info': texture_item[1], 'error': str(e)})
+    finally:
+        if temp_dir is not None:
+            shutil.rmtree(temp_dir)
 
 
-def process_single_texture(texture_item: tuple, db_proxy: DatabaseProxy, args: argparse.Namespace) -> dict:
+def process_single_texture(texture_item: tuple, cache: CacheManagerClient, args: argparse.Namespace, temp_dir: Path) -> dict:
     """The core logic for compressing a single texture."""
 
     key, source_path, source_type, bsa_path, w, h = texture_item
@@ -412,42 +441,43 @@ def process_single_texture(texture_item: tuple, db_proxy: DatabaseProxy, args: a
         ktx_path = source_path.with_suffix('.ktx')
 
     source_for_processing, temp_source_to_clean = None, None
-    temp_png = None
+    temp_file = None
 
     try:
-
         if source_type == 'data_file':
             source_for_processing = source_path
         else:
-            temp_dir = Path(os.environ.get("TMPDIR", "/tmp")) / f"nlc_{os.getpid()}"
-            temp_dir.mkdir(exist_ok=True, parents=True)
             temp_source_to_clean = unpack_bsa_file(bsa_path, source_path, temp_dir)
             source_for_processing = temp_source_to_clean
 
-        # We already checked mtime during discovery, so now we just check compression settings
-        cache = db_proxy.get_cache_entry(key)
-        if cache and not args.force_recompress:
-            _, _, _, _, stored_block, stored_quality = cache
+        # If the file exists, see if we need to compress it.
+        if ktx_path.is_file and not args.force_recompress:
+            # We already checked mtime during discovery, so now we just check compression settings
+            cache_item = cache.get_cache_entry(key)
+            if cache_item:
+                _, _, _, _, stored_block, stored_quality = cache_item
 
-            if stored_block == args.block_size and QUALITY_HIERARCHY.get(args.quality, -1) <= QUALITY_HIERARCHY.get(stored_quality, -1):
-                return {'status': 'skipped', 'info': source_for_processing.name}
+                if stored_block == args.block_size and QUALITY_HIERARCHY.get(args.quality, -1) <= QUALITY_HIERARCHY.get(stored_quality, -1):
+                    return {'status': 'skipped', 'info': source_for_processing.name, 'original_size': source_for_processing.stat().st_size, 'compressed_size': ktx_path.stat().st_size}
 
         ktx_path.parent.mkdir(exist_ok=True, parents=True)
 
-        temp_png = Path(os.environ.get("TMPDIR", "/tmp")) / f"nlc_{os.getpid()}.png"
-        run_command(['minimg', 'convert', str(source_for_processing), str(temp_png)])
-        kram_cmd = ['kram', 'encode', '-f', f'astc{args.block_size}', '-encoder', 'astcenc', '-quality', args.quality, '-flip', '-i', str(temp_png), '-o', str(ktx_path)]
+        if source_for_processing.suffix.lower() == '.dds':
+            temp_file = temp_dir / (source_for_processing.stem + '.ktx')
+            run_command(['kram', 'decode', '-i', str(source_for_processing), '-o', str(temp_file)])
+        else:
+            temp_file = temp_dir / (source_for_processing.stem + '.png')
+            run_command(['minimg', 'convert', str(source_for_processing), str(temp_file)])
+
+        kram_cmd = ['kram', 'encode', '-f', f'astc{args.block_size}', '-encoder', 'astcenc', '-quality', str(QUALITY_VALUE.get(args.quality, 50)), '-flip', '-i', str(temp_file), '-o', str(ktx_path)]
         run_command(kram_cmd)
 
-        db_proxy.update_compression_details(key, args.block_size, args.quality)
+        cache.update_compression_details(key, args.block_size, args.quality)
         return {'status': 'compressed', 'info': source_for_processing.name, 'original_size': source_for_processing.stat().st_size, 'compressed_size': ktx_path.stat().st_size}
 
     finally:
-        if temp_source_to_clean:
-            shutil.rmtree(temp_source_to_clean.parent)
-
-        if temp_png is not None and temp_png.exists():
-            temp_png.unlink()
+        if temp_file is not None and temp_file.exists():
+            temp_file.unlink()
 
 
 def end_processor_consumer(done_queue, total_textures, cancel_event, stats, args):
@@ -513,7 +543,7 @@ def discover_textures(cfg_path, resolve_queue, cancel_event, start_event, total_
         if not data_root.is_dir():
             continue
 
-        to_scan = deque([data_root])
+        to_scan = deque([(0, data_root)])
         while to_scan:
             if cancel_event.is_set():
                 if not start_event.is_set():
@@ -521,11 +551,15 @@ def discover_textures(cfg_path, resolve_queue, cancel_event, start_event, total_
 
                 return
 
-            current_path = to_scan.popleft()
+            depth, current_path = to_scan.popleft()
             try:
                 for entry in current_path.iterdir():
                     if entry.is_dir():
-                        to_scan.append(entry)
+                        if depth == 0 and entry.name.lower() in BAD_CHECK_DIRECTORIES:
+                            # Skip these directories as they don't have textures.
+                            continue
+
+                        to_scan.append((depth + 1, entry))
                         continue
 
                     if not entry.is_file() or entry.suffix.lower() not in SUPPORTED_EXTENSIONS:
@@ -543,7 +577,6 @@ def discover_textures(cfg_path, resolve_queue, cancel_event, start_event, total_
                     resolve_queue.put((key, entry, 'data_file', None))
 
                     total_textures.value += 1
-
                     if not start_event.is_set():
                         start_event.set()
 
@@ -599,7 +632,7 @@ def discover_textures(cfg_path, resolve_queue, cancel_event, start_event, total_
 
 
 # --- Resolve logic ---
-def resolve_textures(texture_queue, db_proxy, num_workers, resolve_queue, cancel_event):
+def resolve_textures(texture_queue, cache, num_workers, resolve_queue, cancel_event):
     print("Beginning texture resolver.")
 
     while True:
@@ -619,14 +652,14 @@ def resolve_textures(texture_queue, db_proxy, num_workers, resolve_queue, cancel
                 texture_stat = source_path.stat()
                 mtime, size = texture_stat.st_mtime, texture_stat.st_size
 
-                cache = db_proxy.get_cache_entry(key)
+                cache_item = cache.get_cache_entry(key)
 
-                if cache and abs(cache[0] - mtime) < 1 and cache[1] == size:
-                    w, h = cache[2], cache[3]
+                if cache_item and abs(cache_item[0] - mtime) < 1 and cache_item[1] == size:
+                    w, h = cache_item[2], cache_item[3]
 
                 else:
                     w, h = get_image_dimensions(source_path)
-                    db_proxy.update_metadata(key, mtime, size, w, h)
+                    cache.update_cache_entry(key, (mtime, size, w, h, None, None))
 
                 texture_queue.put((key, source_path, 'data_file', None, w, h))
 
@@ -634,17 +667,17 @@ def resolve_textures(texture_queue, db_proxy, num_workers, resolve_queue, cancel
                 bsa_stat = bsa_path.stat()
                 mtime, size = bsa_stat.st_mtime, bsa_stat.st_size
 
-                cache = db_proxy.get_cache_entry(key)
+                cache_item = cache.get_cache_entry(key)
 
-                if cache and abs(cache[0] - mtime) < 1 and cache[1] == size:
-                    w, h = cache[2], cache[3]
+                if cache_item and abs(cache_item[0] - mtime) < 1 and cache_item[1] == size:
+                    w, h = cache_item[2], cache_item[3]
 
                 else:
                     ## TODO: somehow preserve these files to save on BSA files from being extracted twice, without using too much space in /tmp...
-                    temp_dir = Path(os.environ.get("TMPDIR", "/tmp")) / f"nlc_meta_{os.getpid()}"
+                    temp_dir = Path(tempfile.mkdtemp(prefix=f"nlc_{os.getpid()}_"))
                     unpacked_file = unpack_bsa_file(bsa_path, source_path, temp_dir)
                     w, h = get_image_dimensions(unpacked_file)
-                    db_proxy.update_metadata(key, bsa_mtime, bsa_size, w, h)
+                    cache.update_cache_entry(key, (bsa_mtime, bsa_size, w, h, None, None))
                     shutil.rmtree(temp_dir)
 
                 texture_queue.put((key, source_path, 'bsa_file', bsa_path, w, h))
@@ -663,6 +696,8 @@ def resolve_textures(texture_queue, db_proxy, num_workers, resolve_queue, cancel
     # One for good luck.
     texture_queue.put(None)
 
+def bool_argument(string):
+    return (string.lower() not in ('n', 'false', 'no', '0'))
 
 # --- Main Execution ---
 def main():
@@ -672,7 +707,7 @@ def main():
     parser.add_argument('--db-path', required=True, type=Path, help='Path to the SQLite database file.')
     parser.add_argument('--block-size', default='8x8', choices=['6x6', '8x8', '12x12'], help='ASTC block size.')
     parser.add_argument('--quality', default='medium', choices=['fastest', 'fast', 'medium', 'thorough', 'verythorough', 'exhaustive'], help='ASTC encoding quality.')
-    parser.add_argument('--force-recompress', action='store_true', help='Re-compress textures even if settings are not an upgrade.')
+    parser.add_argument('--force-recompress', default=False, type=bool_argument, help='Re-compress textures even if settings are not an upgrade.')
     parser.add_argument('--esmm-progress', action='store_true', help='Output machine-parseable progress for GUI integration.')
     parser.add_argument('--cancel-file', type=Path, default=None, help='A file that signals cancellation if it exists.')
     args = parser.parse_args()
@@ -682,7 +717,6 @@ def main():
 
     # Use a multiprocessing Manager for shared state between processes
     manager          = multiprocessing.Manager()
-    db_request_queue = manager.Queue()
     resolve_queue    = manager.Queue()
     texture_queue    = manager.Queue()
     done_queue       = manager.Queue()
@@ -702,20 +736,17 @@ def main():
     watcher_thread = threading.Thread(target=cancellation_watcher, daemon=True)
     watcher_thread.start()
 
-    db_process = None
-    db_proxy = None
     try:
         print(f"--- {MOD_NAME} ---")
 
-        num_workers   = int((os.cpu_count() or 1) * 1.5)
-        num_resources = int((os.cpu_count() or 1) * 2)
+        num_workers   = max(int((os.cpu_count() or 1) / 2), 1)
+        num_resources = max(int((os.cpu_count() or 1) * 2), 3)
 
         # Start the dedicated database process
-        db_process = DatabaseProcess(args.db_path, db_request_queue, cancel_event)
-        db_process.start()
+        cache_manager = CacheManager(args.db_path.with_suffix('.pkl'), manager)
+        cache_manager.start()
 
-        # Create the local proxy
-        db_proxy = DatabaseProxy(db_request_queue, manager)
+        cache_client = CacheManagerClient(cache_manager._request_queue, manager)
 
         # Resource manager
         resource_manager = ResourceManager(num_resources, manager)
@@ -729,16 +760,16 @@ def main():
 
         if total_textures.value > 0:
             # Texture resolver
-            texture_resolver = threading.Thread(target=resolve_textures, args=(texture_queue, db_proxy, num_workers, resolve_queue, cancel_event), daemon=True)
+            texture_resolver = threading.Thread(target=resolve_textures, args=(texture_queue, cache_client, num_workers, resolve_queue, cancel_event), daemon=True)
             texture_resolver.start()
 
             end_processor = threading.Thread(target=end_processor_consumer, args=(done_queue, total_textures, cancel_event, stats, args), daemon=True)
             end_processor.start()
 
             print("Beginning compressing textures.")
-            with multiprocessing.Pool(processes=num_workers, initializer=init_texture_processor_worker, initargs=(db_request_queue, manager)) as pool:
+            with multiprocessing.Pool(processes=num_workers, initializer=init_texture_processor_worker, initargs=(manager, )) as pool:
                 # Start worker processes
-                worker_args = (texture_queue, done_queue, resource_manager, cancel_event, args)
+                worker_args = (texture_queue, cache_manager._request_queue, done_queue, resource_manager, cancel_event, args)
                 pool.starmap(texture_processor_worker, [worker_args] * num_workers)
 
             print("Texture compression complete.")
@@ -772,15 +803,12 @@ def main():
         if args.esmm_progress:
             esmm_error(f"{MOD_NAME} Error", e)
 
-        print(f"\nAn error occurred: {e}", file=sys.stderr)
-        sys.exit(1)
+        # print(f"\nAn error occurred: {e}", file=sys.stderr)
+        # sys.exit(1)
+        raise
 
     finally:
-        if db_proxy:
-            db_proxy.close()
-
-        if db_process:
-            db_process.join(timeout=5)
+        cache_manager.stop()
 
         cancel_event.set()
 
