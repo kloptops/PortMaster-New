@@ -677,7 +677,7 @@ def resolve_textures(texture_queue, cache, num_workers, resolve_queue, cancel_ev
                     temp_dir = Path(tempfile.mkdtemp(prefix=f"nlc_{os.getpid()}_"))
                     unpacked_file = unpack_bsa_file(bsa_path, source_path, temp_dir)
                     w, h = get_image_dimensions(unpacked_file)
-                    cache.update_cache_entry(key, (bsa_mtime, bsa_size, w, h, None, None))
+                    cache.update_cache_entry(key, (mtime, size, w, h, None, None))
                     shutil.rmtree(temp_dir)
 
                 texture_queue.put((key, source_path, 'bsa_file', bsa_path, w, h))

@@ -209,10 +209,20 @@ elif [ "$CFW_NAME" = "ROCKNIX" ]; then
     # ~~Shows a cursor at least, enjoy the flickering. owo~~ FIXED THAANKS BINARY <3
     SDL_VIDEODRIVER=x11
 
-    if ! glxinfo | grep "OpenGL version string"; then
-        pm_message "This Port does not support the libMali graphics driver. Switch to Panfrost to continue."
-        sleep 5
-        exit 1
+    if [ -e /usr/bin/gpudriver ]; then
+        GPUDRIVER=$(/usr/bin/gpudriver)
+
+        if [ "$GPUDRIVER" = "libmali" ]; then
+            pm_message "This Port does not support the libMali graphics driver. Switch to Panfrost to continue."
+            sleep 5
+            exit 1
+        fi
+    else
+        if ! glxinfo | grep "OpenGL version string"; then
+            pm_message "This Port does not support the libMali graphics driver. Switch to Panfrost to continue."
+            sleep 5
+            exit 1
+        fi
     fi
 
     if [[ "$UI_SERVICE" == *"sway"* ]]; then
