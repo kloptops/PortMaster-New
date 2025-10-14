@@ -169,7 +169,7 @@ def safe_resolve_path(base_path: Path, path_str: str) -> Path:
     current_path = base_path
     
     # Use Path(path_str).parts to correctly handle OS-specific separators.
-    parts = Path(path_str).parts
+    parts = Path(path_str.replace('\\', '/')).parts
 
     for part in parts:
         # If the current path doesn't exist or isn't a directory,
@@ -599,6 +599,7 @@ def discover_textures(cfg_path, resolve_queue, cancel_event, start_event, total_
                 bsa_list_raw = run_command(['bsatool', 'list', str(bsa_path)])
 
                 for rel_path_str in bsa_list_raw.splitlines():
+                    rel_path_str = rel_path_str.replace('\\', '/')
                     entry = Path(rel_path_str)
                     filename_lower = entry.name.lower()
 
