@@ -245,6 +245,8 @@ elif [ "$CFW_NAME" = "ArkOS" ] && [ "$DEVICE_CPU" = "Cortex-A35" ] || [ "$DEVICE
     CRUSTY_CURSOR_FILE=$GAMEDIR/blank_cursor.bmp
 fi
 
+# MOUNT POINT YO
+MOUNT_POINT="/tmp/pm_python3"
 
 ## MOD MANAGER -- Not yet compiled for x86_64
 if [ ! -f "$GAMEDIR/skip_openmw_esmm" ] && [ -f "$GAMEDIR/bin.$DEVICE_ARCH/openmw_esmm" ]; then
@@ -254,10 +256,81 @@ if [ ! -f "$GAMEDIR/skip_openmw_esmm" ] && [ -f "$GAMEDIR/bin.$DEVICE_ARCH/openm
         curl https://raw.githubusercontent.com/DanaePlays/mlox-rules/main/mlox_user.txt -o mlox_user.txt
     fi
 
+    # --- Python Version Check ---
+    MIN_MINOR_VERSION=9
+
+    echo "--- Checking system Python version ---"
+    # Get version string like "3.7.5" from an output like "Python 3.7.5"
+    # The 2>&1 redirects stderr to stdout, as some pythons write version info there.
+    VERSION_STRING=$(python3 --version 2>&1 | awk '{print $2}')
+
+    # Extract major and minor version numbers
+    MAJOR_VERSION=$(echo "$VERSION_STRING" | cut -d'.' -f1)
+    MINOR_VERSION=$(echo "$VERSION_STRING" | cut -d'.' -f2)
+
+    runtime="python_3.11"
+
+    # Check if the version is less than 3.8
+    if [ "$PM_CAN_MOUNT" = "Y" ] && { [ "$MAJOR_VERSION" -lt 3 ] || { [ "$MAJOR_VERSION" -eq 3 ] && [ "$MINOR_VERSION" -lt "$MIN_MINOR_VERSION" ]; } }; then
+        echo "System Python is version $VERSION_STRING, which is older than 3.8. A custom environment is required."
+        USE_PYTHON_SQUASHFS=true
+
+        if [ ! -f "$controlfolder/libs/${runtime}.squashfs" ]; then
+            # LETS DO THIS
+            source "${controlfolder}/PortMasterDialog.txt"
+
+            hasip=$(PortMasterIPCheck)
+            if [[ -z "${hasip}" ]]; then
+                # No internet connection, do not initialize with harbourmaster backend.
+                PortMasterDialogInit "no-harbour"
+                PortMasterDialogMessageBox "Runtime ${runtime}.squashfs is missing, no internet connection available.\n\nPlease manually download ${runtime}.squashfs and place it in the 'PortMaster/libs/' directory."
+                PortMasterDialogExit
+                exit 1
+            fi
+
+            # Dont check for updates.
+            PortMasterDialogInit "no-check"
+
+            PortMasterDialog "messages_begin"
+
+            PortMasterDialog "message" "Downloading ${runtime}.squashfs."
+
+            RUN_RESULT=$(PortMasterDialogCheckRuntime "${runtime}.squashfs")
+
+            if [[ "$RUN_RESULT" != "OKAY" ]]; then
+                PortMasterDialogMessageBox "Unable to download ${runtime}.squashfs.\n\nPlease manually download ${runtime}.squashfs and place it in the 'PortMaster/libs/' directory."
+                PortMasterDialogExit
+                exit 1
+            fi 
+
+            PortMasterDialog "message" "Success."
+            sleep 3
+            PortMasterDialogExit
+        fi
+
+        $ESUDO mkdir -p "$MOUNT_POINT"
+        if mountpoint -q "$MOUNT_POINT"; then
+          $ESUDO umount "$MOUNT_POINT"
+          echo "Unmounted $MOUNT_POINT"
+        fi
+        $ESUDO mount "$controlfolder/libs/${runtime}.squashfs" "$MOUNT_POINT"
+
+        export PATH="$MOUNT_POINT/bin:$PATH"
+        export LD_LIBRARY_PATH="$MOUNT_POINT/libs:$LD_LIBRARY_PATH"
+        export PYTHONHOME="$MOUNT_POINT"
+    else
+        echo "System Python is version $VERSION_STRING. No custom environment needed."
+    fi
+
     $GPTOKEYB "openmw_esmm" &
     pm_platform_helper "$GAMEDIR/bin.$DEVICE_ARCH/openmw_esmm"
     if ! "openmw_esmm" --config-file "$GAMEDIR/openmw/openmw.cfg" --7zz "$controlfolder/7zzs.$DEVICE_ARCH"; then
         pm_gptokeyb_finish
+
+        if [ "$PM_CAN_MOUNT" = "Y" ] && mountpoint -q "$MOUNT_POINT"; then
+          $ESUDO umount "$MOUNT_POINT"
+          echo "Unmounted $MOUNT_POINT"
+        fi
         exit 0
     fi
     pm_gptokeyb_finish
@@ -268,6 +341,11 @@ pm_platform_helper "$GAMEDIR/$GAME_EXECUTABLE"
 LD_PRELOAD="$PRELOAD" ./$GAME_EXECUTABLE
 
 pm_finish
+
+if [ "$PM_CAN_MOUNT" = "Y" ] && mountpoint -q "$MOUNT_POINT"; then
+    $ESUDO umount "$MOUNT_POINT"
+    echo "Unmounted $MOUNT_POINT"
+fi
 
 if [ "$CFW_NAME" = "muOS" ]; then
     # THANKS FOR NOTHING

@@ -35,7 +35,7 @@ from collections import namedtuple, deque
 from pathlib import Path
 from queue import Queue, Empty as QueueEmpty # Use a specific import for clarity
 from types import TracebackType
-from typing import Optional, Type, ContextManager
+from typing import Optional, Type, ContextManager, List, Tuple
 
 # --- Constants & Configuration ---
 MOD_NAME = "Netch Leather Compressor"
@@ -115,7 +115,7 @@ class ResourceManager:
 
 
 # --- In-Python Header Parsers ---
-def get_image_dimensions(path: Path) -> tuple[int, int]:
+def get_image_dimensions(path: Path) -> Tuple[int, int]:
     """Reads image headers directly in Python to get dimensions."""
     try:
         with open(path, 'rb') as f:
@@ -193,7 +193,7 @@ def safe_resolve_path(base_path: Path, path_str: str) -> Path:
     return current_path
 
 
-def run_command(cmd: list[str]) -> str:
+def run_command(cmd: List[str]) -> str:
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
         return result.stdout.strip()
@@ -552,6 +552,7 @@ def discover_textures(cfg_path, resolve_queue, cancel_event, start_event, total_
                 return
 
             depth, current_path = to_scan.popleft()
+            # print(f"- {depth}: {current_path}")
             try:
                 for entry in current_path.iterdir():
                     if entry.is_dir():
@@ -592,6 +593,7 @@ def discover_textures(cfg_path, resolve_queue, cancel_event, start_event, total_
         for data_root in data_paths:
             bsa_path = data_root / bsa_name
 
+            # print(f"- {bsa_path}")
             if not bsa_path.is_file():
                 continue
 
@@ -700,6 +702,19 @@ def resolve_textures(texture_queue, cache, num_workers, resolve_queue, cancel_ev
 def bool_argument(string):
     return (string.lower() not in ('n', 'false', 'no', '0'))
 
+def nice_duration(seconds):
+    seconds = int(seconds)
+    output = ""
+    if (seconds >= (60 * 60)):
+        output += f" {seconds // (60 * 60)}h"
+        seconds %= (60 * 60)
+    if (seconds >= 60):
+        output += f" {seconds // 60}m"
+        seconds %= 60
+    if (seconds > 0):
+        output += f" {seconds}s"
+    return output.strip()
+
 # --- Main Execution ---
 def main():
     """Sets up and runs the texture compression process."""
@@ -756,10 +771,11 @@ def main():
         texture_discoverer = threading.Thread(target=discover_textures, args=(args.openmw_cfg, resolve_queue, cancel_event, start_event, total_textures), daemon=True)
         texture_discoverer.start()
 
-        while not start_event.is_set():
+        while not start_event.is_set() and not cancel_event.is_set():
+            # print("Zzzz")
             time.sleep(0.5)
 
-        if total_textures.value > 0:
+        if total_textures.value > 0 and not cancel_event.is_set():
             # Texture resolver
             texture_resolver = threading.Thread(target=resolve_textures, args=(texture_queue, cache_client, num_workers, resolve_queue, cancel_event), daemon=True)
             texture_resolver.start()
@@ -780,9 +796,9 @@ def main():
 
         texture_discoverer.join()
 
-        end_time = time.monotonic()
+        total_time = time.monotonic() - start_time
         print("\n--- Run Summary ---")
-        print(f"Total Time:             {end_time - start_time:.2f}s")
+        print(f"Total Time:             {total_time:.2f}s ({nice_duration(total_time)})")
         print("-" * 25)
         print(f"Textures Processed:")
         print(f"  - Compressed:           {stats['compressed']}")
