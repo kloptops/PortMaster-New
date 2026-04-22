@@ -96,28 +96,29 @@ def parse_gameinfo(gameinfo_file, gameinfo_status):
         file.resolve()
         for file in port_dir.glob('*.sh')]
 
+    print(gameinfo_file)
     gamelist_tree = ET.parse(gameinfo_file)
     gamelist_root = gamelist_tree.getroot()
 
     gameinfo_data = []
 
     if gamelist_root.tag != 'gameList':
-        error(port_name, f"bad root level tag, got {gamelist_root.tag!r} expected 'gameList'")
+        error(port_name, f"{gameinfo_file}: bad root level tag, got {gamelist_root.tag!r} expected 'gameList'")
 
     for gamelist_game in gamelist_root:
         if gamelist_game.tag != 'game':
-            error(port_name, f"Unknown tag {gamelist_game.tag!r} found.")
+            error(port_name, f"{gameinfo_file}: Unknown tag {gamelist_game.tag!r} found.")
             continue
 
         gameinfo_item = {}
         for gamelist_item in gamelist_game:
             if gamelist_item.tag not in ALLOWED_XML_TAGS:
-                error(port_name, f"Unknown tag {gamelist_item.tag!r} found.")
+                error(port_name, f"{gameinfo_file}: Unknown tag {gamelist_item.tag!r} found.")
                 continue
 
             if gamelist_item.text is None:
                 if gamelist_item.tag in REQUIRED_XML_TAGS:
-                    error(port_name, f"Tag {gamelist_item.tag!r} is None")
+                    error(port_name, f"{gameinfo_file}: Tag {gamelist_item.tag!r} is None")
 
                 continue
 
@@ -148,11 +149,12 @@ def parse_gameinfo(gameinfo_file, gameinfo_status):
             port_scripts.remove(script_file)
 
         if 'image' not in gameinfo_item:
-            gameinfo_status[str(gameinfo_file)]['temp'] = 1
+            # gameinfo_status[str(gameinfo_file)]['temp'] = 1
+            error(port_name, f"{gameinfo_file}: missing 'image' entry.")
             continue
 
         if not gameinfo_item['image'].startswith('./'):
-            gameinfo_status[str(gameinfo_file)]['temp'] = 1
+            # gameinfo_status[str(gameinfo_file)]['temp'] = 1
             error(port_name, f"{gameinfo_file}: bad value for 'image': {gameinfo_item['image']!r}")
             continue
 
