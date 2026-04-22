@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<gamelist>
+<gameList>
 	<game>
 		<path>./Victory Heat Rally.sh</path>
 		<name>Victory Heat Rally</name>
@@ -9,4 +9,4 @@
 		<developer>Skydevilpalm</developer>
 		<genre>Racing</genre>
 	</game>
-</gamelist>
+</gameList>

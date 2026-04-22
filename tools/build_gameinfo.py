@@ -96,7 +96,7 @@ def parse_gameinfo(gameinfo_file, gameinfo_status):
         file.resolve()
         for file in port_dir.glob('*.sh')]
 
-    print(gameinfo_file)
+    # print(gameinfo_file)
     gamelist_tree = ET.parse(gameinfo_file)
     gamelist_root = gamelist_tree.getroot()
 
@@ -164,15 +164,29 @@ def parse_gameinfo(gameinfo_file, gameinfo_status):
 
         directory, filename = gameinfo_item['image'].rsplit('/', 1)
 
-        directory = (port_dir / directory).resolve()
-        filename = (port_dir / filename).resolve()
+        filename_fix = filename
 
-        if not directory.is_dir():
-            error(port_name, f"{gameinfo_file}: bad value for 'image', unknown directory: {directory.name!r}")
+        if filename.rsplit('.', 1)[-1] in ('png', 'jpg'):
+            fixes = {'jpg': '.png', 'png': '.jpg'}
+
+            filename_fix = filename.rsplit('.', 1)[0] + fixes[filename.rsplit('.', 1)[-1]]
+
+        directory_base   = (port_dir / directory).resolve()
+        filename_base    = (port_dir / filename).resolve()
+        filename_portdir = (port_dir / directory / filename).resolve()
+
+        filename_base_fix    = (port_dir / filename_fix).resolve()
+        filename_portdir_fix = (port_dir / directory / filename_fix).resolve()
+
+        if not directory_base.is_dir():
+            error(port_name, f"{gameinfo_file}: bad value for 'image', unknown directory: {directory_base.name!r}")
             continue
 
-        if not filename.is_file():
-            error(port_name, f"{gameinfo_file}: bad value for 'image', unknown file: {filename.name!r}")
+        if not filename_base.is_file() and not filename_portdir.is_file():
+            if filename_base_fix.is_file() or filename_portdir_fix.is_file():
+                error(port_name, f"{gameinfo_file}: bad value for 'image', unknown file: {directory + '/' + filename!r} (found: {directory + '/' + filename_fix!r})")
+            else:
+                error(port_name, f"{gameinfo_file}: bad value for 'image', unknown file: {directory + '/' + filename!r}")
             continue
 
     if len(port_scripts) > 0:
