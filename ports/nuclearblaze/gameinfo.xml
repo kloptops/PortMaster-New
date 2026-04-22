@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<gamelist>
+<gameList>
 	<game>
 		<path>./Nuclear Blaze.sh</path>
 		<name>Nuclear Blaze</name>
@@ -9,4 +9,4 @@
 		<developer>Deepnight Games</developer>
 		<genre>Action, Platformer, Indie</genre>
 	</game>
-</gamelist>
+</gameList>

@@ -103,7 +103,10 @@ def parse_gameinfo(gameinfo_file, gameinfo_status):
     gameinfo_data = []
 
     if gamelist_root.tag != 'gameList':
-        error(port_name, f"{gameinfo_file}: bad root level tag, got {gamelist_root.tag!r} expected 'gameList'")
+        if gamelist_root.tag.lower() == 'gamelist':
+            warning(port_name, f"{gameinfo_file}: bad root level tag, got {gamelist_root.tag!r} expected 'gameList'")
+        else:
+            error(port_name, f"{gameinfo_file}: bad root level tag, got {gamelist_root.tag!r} expected 'gameList'")
 
     for gamelist_game in gamelist_root:
         if gamelist_game.tag != 'game':
@@ -140,10 +143,7 @@ def parse_gameinfo(gameinfo_file, gameinfo_status):
             error(port_name, f"{gameinfo_file}: bad value for 'path': {gameinfo_item['path']!r}")
 
         elif not script_file.is_file():
-            error(port_name, f"{gameinfo_file}: unknown script file {str(script_file.name)!r}")
-
-        elif script_file not in port_scripts:
-            error(port_name, f"{gameinfo_file}: unknown script file {str(script_file.name)!r}")
+            warning(port_name, f"{gameinfo_file}: unknown script file {str(script_file.name)!r}")
 
         else:
             port_scripts.remove(script_file)
